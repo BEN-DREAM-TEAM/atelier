@@ -4,13 +4,20 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('push', e => {
   e.waitUntil((async () => {
-    let n = { titre: 'Atelier', corps: 'Nouvelle activité à l\'atelier', tag: 'atelier' };
-    try {
-      const sub = await self.registration.pushManager.getSubscription();
-      const r = await fetch(API + '?action=notif&endpoint=' + encodeURIComponent(sub ? sub.endpoint : ''), { cache: 'no-store' });
-      const j = await r.json(); if (j && j.titre) n = j;
-    } catch (err) {}
-    await self.registration.showNotification(n.titre, { body: n.corps, tag: (n.tag || 'atelier') + '-' + Date.now(), icon: 'icon-192.png', badge: 'icon-192.png', data: { url: './' } });
+    let n = null;
+    try { if (e.data) n = e.data.json(); } catch (err) {}
+    if (!n || !n.titre) {
+      n = { titre: 'Atelier', corps: 'Nouvelle activité à l\'atelier', tag: 'atelier' };
+      try {
+        const sub = await self.registration.pushManager.getSubscription();
+        const r = await fetch(API + '?action=notif&endpoint=' + encodeURIComponent(sub ? sub.endpoint : ''), { cache: 'no-store' });
+        const j = await r.json(); if (j && j.titre) n = j;
+      } catch (err) {}
+    }
+    const show = self.registration.showNotification(n.titre, { body: n.corps, tag: (n.tag || 'atelier') + '-' + Date.now(), icon: 'icon-192.png', badge: 'icon-192.png', data: { url: './' } });
+    const badge = (typeof n.badge === 'number' && self.navigator && 'setAppBadge' in self.navigator)
+      ? (n.badge ? self.navigator.setAppBadge(n.badge) : self.navigator.clearAppBadge()).catch(() => {}) : Promise.resolve();
+    await Promise.all([show, badge]);
   })());
 });
 self.addEventListener('notificationclick', e => {

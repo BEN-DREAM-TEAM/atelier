@@ -262,7 +262,7 @@ async function render(){
   $('who').hidden = !state.role;
   $('who').textContent = state.role === 'meca' ? state.nom + ' ⇄' : state.role === 'resp' ? RESPONSABLE + ' ⇄' : '';
   $('who').setAttribute('aria-label', 'Changer de profil');
-  majNbar();
+  majNbar(); majBadge(); reinscrire();
   if (!charge) { app.innerHTML = '<div class="empty" id="loading">Chargement…</div>'; return; }
   if (!state.role) return renderAccueil();
   if (state.role === 'meca') return renderMeca();
@@ -519,11 +519,29 @@ $('nbar-btn').onclick = async () => {
     const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleVapid(VAPID) });
-    await post({ action: 'abonner', endpoint: sub.endpoint, nom: state.role === 'resp' ? RESPONSABLE : state.nom, role: state.role, code: state.code });
+    await inscrire(sub);
     store.set('abo-' + state.role, '1'); toast('Notifications activées.');
   } catch (e) { toast('Activation impossible : ' + (e.message || e)); }
   finally { btn.disabled = false; majNbar(); }
 };
+async function inscrire(sub){
+  const j = sub.toJSON ? sub.toJSON() : {};
+  await post({ action: 'abonner', endpoint: sub.endpoint, keys: j.keys || {}, nom: state.role === 'resp' ? RESPONSABLE : state.nom, role: state.role, code: state.code });
+}
+// Réinscription silencieuse (met à jour les clés de chiffrement) une fois par session et par profil
+let reinscrit = '';
+async function reinscrire(){
+  if (!pushOK || Notification.permission !== 'granted' || !state.role || (state.role === 'resp' && !state.ok)) return;
+  const k = state.role + ':' + (state.nom || '');
+  if (reinscrit === k) return; reinscrit = k;
+  try { const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); if (sub) { await inscrire(sub); store.set('abo-' + state.role, '1'); } } catch(e){}
+}
+// Chiffre rouge sur l'icône : à traiter (+ à valider pour le responsable)
+function majBadge(){
+  if (!('setAppBadge' in navigator) || !state.role) return;
+  const n = DB.signalements.length + (state.role === 'resp' ? DB.interventions.filter(x => x.statut === 'Terminé').length : 0);
+  try { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch(e){}
+}
 if (pushOK) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 // ---------- Mise à jour automatique ----------
